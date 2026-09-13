@@ -11,16 +11,24 @@ import ffmpegPath from 'ffmpeg-static';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const BOT_TOKEN = process.env.BOT_TOKEN?.trim();
-const RATE_LIMIT_MS = Number(process.env.RATE_LIMIT_MS) || 700;
+const config = {
+  botToken: process.env.BOT_TOKEN?.trim(),
+  adminIds: (process.env.ADMIN_IDS || '').split(',').map((id) => id.trim()).filter(Boolean),
+  rateLimitMs: Number(process.env.RATE_LIMIT_MS) || 700,
+  mode: (process.env.BOT_MODE || (process.env.RENDER_EXTERNAL_URL ? 'webhook' : 'polling')).trim().toLowerCase(),
+  port: Number(process.env.PORT) || 10000,
+  webhookDomain: (process.env.WEBHOOK_DOMAIN || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/$/, '')
+};
+const BOT_TOKEN = config.botToken;
+const RATE_LIMIT_MS = config.rateLimitMs;
 const PAGE_SIZE = 12;
 const HISTORY_FILE = path.join(__dirname, 'data', 'history.json');
 const USERS_FILE = path.join(__dirname, 'data', 'users.json');
 const GAME_FILE = path.join(__dirname, 'data', 'game.json');
-const adminIds = new Set((process.env.ADMIN_IDS || '').split(',').map((id) => id.trim()).filter(Boolean));
+const adminIds = new Set(config.adminIds);
 
 if (!BOT_TOKEN || BOT_TOKEN.includes('BU_YERGA') || BOT_TOKEN.includes('PASTE_')) {
-  throw new Error('BOT_TOKEN topilmadi. Loyiha papkasidagi .env fayliga BOT_TOKEN=Telegram_token yozing.');
+  throw new Error('BOT_TOKEN topilmadi. Lokal ishga tushirishda .env, Renderda esa Environment Variables ichiga BOT_TOKEN kiriting.');
 }
 
 const languages = [
@@ -878,7 +886,13 @@ bot.catch((error) => console.error('Bot xatosi:', error));
 
 async function startBot() {
   try {
-    await bot.launch({ dropPendingUpdates: true });
+    const launchOptions = config.mode === 'webhook'
+      ? { webhook: { domain: config.webhookDomain, port: config.port } }
+      : { dropPendingUpdates: true };
+    if (config.mode === 'webhook' && !config.webhookDomain) {
+      throw new Error('WEBHOOK_DOMAIN yoki Renderning RENDER_EXTERNAL_URL qiymati topilmadi.');
+    }
+    await bot.launch(launchOptions);
     try {
       await configureCommandMenus();
     } catch (error) {
@@ -886,9 +900,13 @@ async function startBot() {
     }
     console.log('Ellita_translate ishga tushdi: node bot.js');
   } catch (error) {
-    console.error('Telegram ulanishi vaqtincha uzildi:', error.message);
-    console.log('10 soniyadan keyin qayta ulanaman...');
-    setTimeout(startBot, 10000);
+    if (error.response?.error_code === 409 || /409|another getUpdates request/i.test(error.message)) {
+      console.error('409 Conflict: shu BOT_TOKEN bilan boshqa polling jarayoni ishlayapti. Lokal botni to\'xtating yoki Renderda BOT_MODE=webhook qiling.');
+      process.exitCode = 1;
+      return;
+    }
+    console.error('Telegram ulanishi xatosi:', error.message);
+    process.exitCode = 1;
   }
 }
 
