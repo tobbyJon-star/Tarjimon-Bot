@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { Telegraf, Markup } from 'telegraf';
-import translate from '@vitalets/google-translate-api';
+import { translate } from '@vitalets/google-translate-api';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
