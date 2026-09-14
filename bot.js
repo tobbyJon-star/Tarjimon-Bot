@@ -1,5 +1,6 @@
+import http from 'node:http';
 import { Telegraf, Markup } from 'telegraf';
-import { translate } from '@vitalets/google-translate-api';
+import translate from '@vitalets/google-translate-api';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -936,6 +937,18 @@ async function configureCommandMenus() {
   }
 }
 
+
 startBot();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+
+import http from 'node:http';
+
+const PORT = process.env.PORT || 10000;
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot active');
+}).listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
