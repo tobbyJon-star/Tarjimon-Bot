@@ -937,15 +937,12 @@ async function configureCommandMenus() {
   }
 }
 
+// Ovozli o'qish (TTS)
 bot.action(/tts_(.+)/, async (ctx) => {
   try {
     await ctx.answerCbQuery("Ovoz tayyorlanmoqda...");
-    
-    // Tarjima qilinadigan matn va til
-    const text = ctx.match[1]; // yoki saqlangan matn o'zgaruvchisi
-    const lang = 'uz'; // yoki joriy tanlangan til kodi
-    
-    // Google TTS tayyor audio havolasi
+    const text = ctx.match[1];
+    const lang = 'uz';
     const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&q=${encodeURIComponent(text)}&client=tw-ob`;
 
     await ctx.replyWithVoice({ url: audioUrl });
@@ -955,10 +952,13 @@ bot.action(/tts_(.+)/, async (ctx) => {
   }
 });
 
-startBot();
+// Botni ishga tushirish (polling rejimida)
+bot.launch();
+
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
+// Render porti uchun HTTP server
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
