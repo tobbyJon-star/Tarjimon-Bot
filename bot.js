@@ -937,13 +937,27 @@ async function configureCommandMenus() {
   }
 }
 
+bot.action(/tts_(.+)/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery("Ovoz tayyorlanmoqda...");
+    
+    // Tarjima qilinadigan matn va til
+    const text = ctx.match[1]; // yoki saqlangan matn o'zgaruvchisi
+    const lang = 'uz'; // yoki joriy tanlangan til kodi
+    
+    // Google TTS tayyor audio havolasi
+    const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&q=${encodeURIComponent(text)}&client=tw-ob`;
+
+    await ctx.replyWithVoice({ url: audioUrl });
+  } catch (error) {
+    console.error("Ovoz yuborishda xatolik:", error);
+    await ctx.reply("⚠️ Ovozli faylni yuklashda kechikish yuz berdi. Qaytadan urinib ko'ring.");
+  }
+});
 
 startBot();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-
-import http from 'node:http';
 
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
@@ -952,3 +966,5 @@ http.createServer((req, res) => {
 }).listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+
