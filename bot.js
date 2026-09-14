@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Telegraf, Markup } from 'telegraf';
 import { translate } from '@vitalets/google-translate-api';
 import fs from 'node:fs';
@@ -938,4 +939,6 @@ async function configureCommandMenus() {
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+startBot();
 
