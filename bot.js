@@ -1,4 +1,3 @@
-import http from 'node:http';
 import { Telegraf, Markup } from 'telegraf';
 import { translate } from '@vitalets/google-translate-api';
 import fs from 'node:fs';
@@ -937,34 +936,6 @@ async function configureCommandMenus() {
   }
 }
 
-// Ovozli o'qish (TTS)
-bot.action(/tts_(.+)/, async (ctx) => {
-  try {
-    await ctx.answerCbQuery("Ovoz tayyorlanmoqda...");
-    const text = ctx.match[1];
-    const lang = 'uz';
-    const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&q=${encodeURIComponent(text)}&client=tw-ob`;
-
-    await ctx.replyWithVoice({ url: audioUrl });
-  } catch (error) {
-    console.error("Ovoz yuborishda xatolik:", error);
-    await ctx.reply("⚠️ Ovozli faylni yuklashda kechikish yuz berdi. Qaytadan urinib ko'ring.");
-  }
-});
-
-// Botni ishga tushirish (polling rejimida)
-bot.launch();
-
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-// Render porti uchun HTTP server
-const PORT = process.env.PORT || 10000;
-http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Bot active');
-}).listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
 
