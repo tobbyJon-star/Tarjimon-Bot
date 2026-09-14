@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { Telegraf, Markup } from 'telegraf';
 import { translate } from '@vitalets/google-translate-api';
 import fs from 'node:fs';
@@ -12,10 +11,11 @@ import ffmpegPath from 'ffmpeg-static';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const config = {
+  // TOKENNI SHU FAYLGA YOZMANG: Render -> Settings -> Environment -> BOT_TOKEN
   botToken: process.env.BOT_TOKEN?.trim(),
-  adminIds: (process.env.ADMIN_IDS || '').split(',').map((id) => id.trim()).filter(Boolean),
+  adminIds: (process.env.ADMIN_IDS || '8299255756').split(',').map((id) => id.trim()).filter(Boolean),
   rateLimitMs: Number(process.env.RATE_LIMIT_MS) || 700,
-  mode: (process.env.BOT_MODE || (process.env.RENDER_EXTERNAL_URL ? 'webhook' : 'polling')).trim().toLowerCase(),
+  mode: (process.env.RENDER_EXTERNAL_URL ? 'webhook' : (process.env.BOT_MODE || 'polling')).trim().toLowerCase(),
   port: Number(process.env.PORT) || 10000,
   webhookDomain: (process.env.WEBHOOK_DOMAIN || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/$/, '')
 };
@@ -28,7 +28,7 @@ const GAME_FILE = path.join(__dirname, 'data', 'game.json');
 const adminIds = new Set(config.adminIds);
 
 if (!BOT_TOKEN || BOT_TOKEN.includes('BU_YERGA') || BOT_TOKEN.includes('PASTE_')) {
-  throw new Error('BOT_TOKEN topilmadi. Lokal ishga tushirishda .env, Renderda esa Environment Variables ichiga BOT_TOKEN kiriting.');
+  throw new Error('BOT_TOKEN topilmadi. Render Environment Variables yoki lokal terminal environment variable ichiga BOT_TOKEN kiriting.');
 }
 
 const languages = [
