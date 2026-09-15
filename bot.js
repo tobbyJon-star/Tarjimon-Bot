@@ -423,7 +423,7 @@ function mainMenu() {
 function welcomeText(account) {
   return `Assalomu alaykum, <b>${escapeHtml(account.firstName)} ${escapeHtml(account.lastName)}</b>!\n\n` +
     'Tarjima qiling, ball to\'plang va 20 savolli o\'yinda reytingga kiring.\n' +
-    `Joriy nishon til: <b>${escapeHtml(label(account.target || 'en'))}</b>`;
+    `Joriy nishon til: <b>${escapeHtml(label(account.target || 'en'))}</b> \n ❗‼ Diqqat bzning botimizda vaqtinchalik O'qib berish ishlmasligi mumkin,\n yoki ko'p loading bolib turishi mumkin😅`; 
 }
 
 function sendAuthMenu(ctx) {
