@@ -177,33 +177,61 @@ async function translateText(text, targetCode, sourceCode) {
 }
 
 async function createSpeech(text, languageCode) {
-  const chunks = text.match(/.{1,180}(?:\s|$)/gu) || [text];
+  const cleanText = String(text || '').trim();
+  if (!cleanText) throw new Error('Oqib beriladigan matn bo\'sh.');
+
+  const chunks = cleanText.match(/.{1,180}(?:\s|$)/gu) || [cleanText];
   const speechLanguages = {
     en: 'en-US', ru: 'ru-RU', tr: 'tr-TR', de: 'de-DE', fr: 'fr-FR',
     es: 'es-ES', it: 'it-IT', pt: 'pt-BR', zh: 'zh-CN', 'zh-CN': 'zh-CN',
-    ja: 'ja-JP', ko: 'ko-KR', ar: 'ar-SA', hi: 'hi-IN', uz: 'tr-TR'
+    ja: 'ja-JP', ko: 'ko-KR', ar: 'ar-SA', hi: 'hi-IN', uz: 'tr-TR',
+    'zh-TW': 'zh-TW', uk: 'uk-UA', pl: 'pl-PL', nl: 'nl-NL', sv: 'sv-SE'
   };
   const speechLanguage = speechLanguages[languageCode] || languageCode || 'en-US';
   const audioParts = [];
+
   for (const chunk of chunks) {
+    const phrase = chunk.trim();
+    if (!phrase) continue;
+
     const url = new URL('https://translate.google.com/translate_tts');
     url.searchParams.set('client', 'tw-ob');
     url.searchParams.set('ie', 'UTF-8');
     url.searchParams.set('tl', speechLanguage);
-    url.searchParams.set('q', chunk.trim());
+    url.searchParams.set('q', phrase);
+
     const response = await fetch(url, {
+      signal: AbortSignal.timeout(20000),
       headers: {
         'User-Agent': 'Mozilla/5.0',
-        Referer: 'https://translate.google.com/'
+        'Accept': 'audio/mpeg, audio/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://translate.google.com/',
+        'X-Requested-With': 'XMLHttpRequest'
       }
     });
-    if (!response.ok) throw new Error(`Ovoz xizmati javobi: ${response.status}`);
-    audioParts.push(Buffer.from(await response.arrayBuffer()));
+
+    if (!response.ok) {
+      throw new Error(`Ovoz xizmati javobi: ${response.status}`);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || (contentType && !contentType.includes('audio'))) {
+      throw new Error('Google TTSdan audio ma\'lumot keldi emas.');
+    }
+    audioParts.push(buffer);
   }
+
+  if (!audioParts.length) throw new Error('Audio qismiga aylantirish uchun ma\'lumot yo\'q.');
   return Buffer.concat(audioParts);
 }
 
 function convertToVoice(audio) {
+  if (!ffmpegPath) {
+    return Promise.reject(new Error('ffmpeg topilmadi. Serverda ffmpeg-static o\'rnatilmagan yoki ishlamayapti.'));
+  }
+
   return new Promise((resolve, reject) => {
     const ffmpeg = spawn(ffmpegPath, [
       '-hide_banner', '-loglevel', 'error', '-i', 'pipe:0',
@@ -215,11 +243,37 @@ function convertToVoice(audio) {
     ffmpeg.stderr.on('data', (chunk) => errors.push(chunk));
     ffmpeg.on('error', reject);
     ffmpeg.on('close', (code) => {
-      if (code === 0) return resolve(Buffer.concat(output));
-      reject(new Error(`Voice formatiga o'tkazib bo'lmadi: ${Buffer.concat(errors).toString().slice(0, 180)}`));
+      if (code === 0 && output.length) return resolve(Buffer.concat(output));
+      const errorText = Buffer.concat(errors).toString().slice(0, 180) || 'FFmpeg qabul qilmadi';
+      reject(new Error(`Voice formatiga o'tkazib bo'lmadi: ${errorText}`));
     });
+    ffmpeg.stdin.on('error', reject);
     ffmpeg.stdin.end(audio);
   });
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function sendVoiceWithRetry(ctx, voice, caption) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await ctx.telegram.sendVoice(
+        ctx.chat.id,
+        { source: voice, filename: 'voice.ogg' },
+        { caption: caption || undefined }
+      );
+    } catch (error) {
+      lastError = error;
+      const description = error.response?.description || error.message || '';
+      const temporary = /socket hang up|ECONNRESET|ETIMEDOUT|network|timeout|502|503|504|file is too big|wrong file identifier|not a valid/i.test(description);
+      if (!temporary || attempt === 3) throw error;
+      await wait(attempt * 1500);
+    }
+  }
+  throw lastError;
 }
 
 async function downloadTelegramFile(ctx, fileId) {
@@ -502,17 +556,23 @@ bot.action(/^translation:save:(.+)$/, async (ctx) => {
 
 bot.action(/^translation:speak:(.+)$/, async (ctx) => {
   if (!requireAccount(ctx)) return ctx.answerCbQuery();
+
   const item = (history[String(ctx.from.id)] || []).find((entry) => entry.id === ctx.match[1]);
   if (!item) return ctx.answerCbQuery('Tarjima topilmadi.', { show_alert: true });
+  if (!item.result || !String(item.result).trim()) {
+    return ctx.answerCbQuery('Oqib berish uchun matn topilmadi.', { show_alert: true });
+  }
+
   await ctx.answerCbQuery('🔊 Ovoz tayyorlanmoqda...');
+
   try {
     const targetLanguage = getLanguage(item.targetCode) || languages.find((language) => language.name === item.target);
     const audio = await createSpeech(item.result, targetLanguage?.code || 'en');
     const voice = await convertToVoice(audio);
-    await ctx.replyWithVoice({ source: voice }, { caption: `🔊 ${item.target}` });
+    await sendVoiceWithRetry(ctx, voice, `🔊 ${item.target}`);
   } catch (error) {
     console.error('Ovoz xatosi:', error.message);
-    await ctx.reply(`⚠️ Ovozli o\'qish ishlamadi: ${escapeHtml(error.message)}`, { parse_mode: 'HTML' });
+    await ctx.reply(`⚠️ Ovozli o'qish vaqtincha ishlamadi. Sabab: ${escapeHtml(error.message)}`, { parse_mode: 'HTML' });
   }
 });
 
@@ -940,5 +1000,8 @@ async function configureCommandMenus() {
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
-startBot();
+if (!globalThis.__ELLITA_TRANSLATE_STARTED__) {
+  globalThis.__ELLITA_TRANSLATE_STARTED__ = true;
+  startBot();
+}
 
