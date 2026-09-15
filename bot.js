@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import gTTS from 'gtts';
 import { Telegraf, Markup } from 'telegraf';
 import { translate } from '@vitalets/google-translate-api';
 import fs from 'node:fs';
@@ -201,44 +202,39 @@ async function createSpeech(text, languageCode) {
   if (!cleanText) throw new Error('Oqib beriladigan matn bo\'sh.');
 
   const speechLanguages = {
-    en: 'en-US', ru: 'ru-RU', tr: 'tr-TR', de: 'de-DE', fr: 'fr-FR',
-    es: 'es-ES', it: 'it-IT', pt: 'pt-BR', zh: 'zh-CN', 'zh-CN': 'zh-CN',
-    ja: 'ja-JP', ko: 'ko-KR', ar: 'ar-SA', hi: 'hi-IN', uz: 'uz-UZ',
-    'zh-TW': 'zh-TW', uk: 'uk-UA', pl: 'pl-PL', nl: 'nl-NL', sv: 'sv-SE'
+    en: 'en', ru: 'ru', tr: 'tr', de: 'de', fr: 'fr',
+    es: 'es', it: 'it', pt: 'pt', zh: 'zh-CN', 'zh-CN': 'zh-CN',
+    ja: 'ja', ko: 'ko', ar: 'ar', hi: 'hi', uz: 'uz', uk: 'uk',
+    pl: 'pl', nl: 'nl', sv: 'sv', da: 'da', no: 'no', fi: 'fi', bg: 'bg',
+    sr: 'sr', sk: 'sk', sl: 'sl', hr: 'hr', ca: 'ca', et: 'et', lv: 'lv',
+    lt: 'lt', sw: 'sw', af: 'af', sq: 'sq', am: 'am', hy: 'hy', be: 'be',
+    bn: 'bn', bs: 'bs', ceb: 'ceb', eo: 'eo', ka: 'ka', gu: 'gu', ha: 'ha',
+    is: 'is', ga: 'ga', jv: 'jv', kn: 'kn', la: 'la', mk: 'mk', ml: 'ml',
+    mr: 'mr', mn: 'mn', my: 'my', ne: 'ne', pa: 'pa', ps: 'ps', si: 'si',
+    so: 'so', ta: 'ta', te: 'te', ur: 'ur', cy: 'cy', yi: 'yi', fa: 'fa',
+    tg: 'tg', kk: 'kk', ky: 'ky', az: 'az', tk: 'tk'
   };
-  const speechLanguage = speechLanguages[languageCode] || languageCode || 'en-US';
+
+  const speechLanguage = speechLanguages[languageCode] || languageCode || 'en';
   const audioParts = [];
 
   for (const chunk of splitSpeechChunks(cleanText)) {
     const phrase = chunk.trim();
     if (!phrase) continue;
 
-    const url = new URL('https://translate.google.com/translate_tts');
-    url.searchParams.set('client', 'tw-ob');
-    url.searchParams.set('ie', 'UTF-8');
-    url.searchParams.set('tl', speechLanguage);
-    url.searchParams.set('q', phrase);
+    const buffer = await new Promise((resolve, reject) => {
+      const chunks = [];
+      const stream = new gTTS(phrase, speechLanguage).stream();
 
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(20000),
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept': 'audio/mpeg, audio/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://translate.google.com/',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
+      stream.on('data', (part) => chunks.push(Buffer.from(part)));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
     });
 
-    if (!response.ok) {
-      throw new Error(`Ovoz xizmati javobi: ${response.status}`);
+    if (!buffer || !buffer.length) {
+      throw new Error('gTTSdan audio ma\'lumot keldi emas.');
     }
 
-    const contentType = response.headers.get('content-type') || '';
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (!buffer.length || (contentType && !contentType.includes('audio'))) {
-      throw new Error('Google TTSdan audio ma\'lumot keldi emas.');
-    }
     audioParts.push(buffer);
   }
 
