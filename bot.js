@@ -176,11 +176,30 @@ async function translateText(text, targetCode, sourceCode) {
   };
 }
 
+function splitSpeechChunks(text) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return [];
+  const segments = [];
+  let current = '';
+  const parts = normalized.split(/(?<=[.!?\n])\s+|\s+/);
+  for (const part of parts) {
+    const value = part.trim();
+    if (!value) continue;
+    if ((current + ' ' + value).trim().length <= 110) {
+      current = (current + ' ' + value).trim();
+    } else {
+      if (current) segments.push(current);
+      current = value;
+    }
+  }
+  if (current) segments.push(current);
+  return segments.length ? segments : [normalized];
+}
+
 async function createSpeech(text, languageCode) {
   const cleanText = String(text || '').trim();
   if (!cleanText) throw new Error('Oqib beriladigan matn bo\'sh.');
 
-  const chunks = cleanText.match(/.{1,180}(?:\s|$)/gu) || [cleanText];
   const speechLanguages = {
     en: 'en-US', ru: 'ru-RU', tr: 'tr-TR', de: 'de-DE', fr: 'fr-FR',
     es: 'es-ES', it: 'it-IT', pt: 'pt-BR', zh: 'zh-CN', 'zh-CN': 'zh-CN',
@@ -190,7 +209,7 @@ async function createSpeech(text, languageCode) {
   const speechLanguage = speechLanguages[languageCode] || languageCode || 'en-US';
   const audioParts = [];
 
-  for (const chunk of chunks) {
+  for (const chunk of splitSpeechChunks(cleanText)) {
     const phrase = chunk.trim();
     if (!phrase) continue;
 
@@ -224,18 +243,21 @@ async function createSpeech(text, languageCode) {
   }
 
   if (!audioParts.length) throw new Error('Audio qismiga aylantirish uchun ma\'lumot yo\'q.');
-  return Buffer.concat(audioParts);
+  return audioParts;
 }
 
-async function sendAudioWithRetry(ctx, audio, caption) {
+async function sendAudioWithRetry(ctx, chunks, caption) {
   let lastError;
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
-      return await ctx.telegram.sendAudio(
-        ctx.chat.id,
-        { source: audio, filename: 'speech.mp3' },
-        { caption: caption || undefined, title: 'Oqib berish' }
-      );
+      for (const [index, chunk] of chunks.entries()) {
+        await ctx.telegram.sendAudio(
+          ctx.chat.id,
+          { source: chunk, filename: `speech-${index + 1}.mp3` },
+          { caption: index === chunks.length - 1 ? (caption || undefined) : undefined, title: 'Oqib berish' }
+        );
+      }
+      return true;
     } catch (error) {
       lastError = error;
       const description = error.response?.description || error.message || '';
@@ -244,6 +266,7 @@ async function sendAudioWithRetry(ctx, audio, caption) {
       await wait(attempt * 1500);
     }
   }
+  console.error('Audio yuborish xatosi:', lastError?.message || 'unknown');
   return null;
 }
 
@@ -587,8 +610,8 @@ bot.action(/^translation:speak:(.+)$/, async (ctx) => {
 
   try {
     const targetLanguage = getLanguage(item.targetCode) || languages.find((language) => language.name === item.target);
-    const audio = await createSpeech(item.result, targetLanguage?.code || 'en');
-    const sent = await sendAudioWithRetry(ctx, audio, `🔊 ${item.target}`);
+    const chunks = await createSpeech(item.result, targetLanguage?.code || 'en');
+    const sent = await sendAudioWithRetry(ctx, chunks, `🔊 ${item.target}`);
     if (!sent) {
       await ctx.reply(`🔊 <b>Ovozli o'qish bo'limida vaqtinchalik muammo bor</b>, lekin matn quyida:
 
