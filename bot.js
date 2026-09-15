@@ -184,7 +184,7 @@ async function createSpeech(text, languageCode) {
   const speechLanguages = {
     en: 'en-US', ru: 'ru-RU', tr: 'tr-TR', de: 'de-DE', fr: 'fr-FR',
     es: 'es-ES', it: 'it-IT', pt: 'pt-BR', zh: 'zh-CN', 'zh-CN': 'zh-CN',
-    ja: 'ja-JP', ko: 'ko-KR', ar: 'ar-SA', hi: 'hi-IN', uz: 'tr-TR',
+    ja: 'ja-JP', ko: 'ko-KR', ar: 'ar-SA', hi: 'hi-IN', uz: 'uz-UZ',
     'zh-TW': 'zh-TW', uk: 'uk-UA', pl: 'pl-PL', nl: 'nl-NL', sv: 'sv-SE'
   };
   const speechLanguage = speechLanguages[languageCode] || languageCode || 'en-US';
@@ -225,6 +225,26 @@ async function createSpeech(text, languageCode) {
 
   if (!audioParts.length) throw new Error('Audio qismiga aylantirish uchun ma\'lumot yo\'q.');
   return Buffer.concat(audioParts);
+}
+
+async function sendAudioWithRetry(ctx, audio, caption) {
+  let lastError;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      return await ctx.telegram.sendAudio(
+        ctx.chat.id,
+        { source: audio, filename: 'speech.mp3' },
+        { caption: caption || undefined, title: 'Oqib berish' }
+      );
+    } catch (error) {
+      lastError = error;
+      const description = error.response?.description || error.message || '';
+      const temporary = /socket hang up|ECONNRESET|ETIMEDOUT|network|timeout|502|503|504|file is too big|wrong file identifier|not a valid|abort/i.test(description);
+      if (!temporary || attempt === 5) break;
+      await wait(attempt * 1500);
+    }
+  }
+  return null;
 }
 
 function convertToVoice(audio) {
@@ -568,17 +588,16 @@ bot.action(/^translation:speak:(.+)$/, async (ctx) => {
   try {
     const targetLanguage = getLanguage(item.targetCode) || languages.find((language) => language.name === item.target);
     const audio = await createSpeech(item.result, targetLanguage?.code || 'en');
-    const voice = await convertToVoice(audio);
-    const sent = await sendVoiceWithRetry(ctx, voice, `🔊 ${item.target}`);
+    const sent = await sendAudioWithRetry(ctx, audio, `🔊 ${item.target}`);
     if (!sent) {
-      await ctx.reply(`🔊 <b>Ovozli o'qish ishlamadi</b>, lekin matn quyida bor:
+      await ctx.reply(`🔊 <b>Ovozli o'qish bo'limida vaqtinchalik muammo bor</b>, lekin matn quyida:
 
 ${escapeHtml(item.result)}`, { parse_mode: 'HTML' });
     }
     return;
   } catch (error) {
     console.error('Ovoz xatosi:', error.message);
-    await ctx.reply(`🔊 <b>Ovozli o'qish ishlamadi</b>, lekin matn quyida bor:
+    await ctx.reply(`🔊 <b>Ovozli o'qish bo'limida vaqtinchalik muammo bor</b>, lekin matn quyida:
 
 ${escapeHtml(item.result)}`, { parse_mode: 'HTML' });
   }
