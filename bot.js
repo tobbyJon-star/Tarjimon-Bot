@@ -258,7 +258,7 @@ function wait(milliseconds) {
 
 async function sendVoiceWithRetry(ctx, voice, caption) {
   let lastError;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
       return await ctx.telegram.sendVoice(
         ctx.chat.id,
@@ -268,12 +268,12 @@ async function sendVoiceWithRetry(ctx, voice, caption) {
     } catch (error) {
       lastError = error;
       const description = error.response?.description || error.message || '';
-      const temporary = /socket hang up|ECONNRESET|ETIMEDOUT|network|timeout|502|503|504|file is too big|wrong file identifier|not a valid/i.test(description);
-      if (!temporary || attempt === 3) throw error;
+      const temporary = /socket hang up|ECONNRESET|ETIMEDOUT|network|timeout|502|503|504|file is too big|wrong file identifier|not a valid|abort/i.test(description);
+      if (!temporary || attempt === 5) break;
       await wait(attempt * 1500);
     }
   }
-  throw lastError;
+  return null;
 }
 
 async function downloadTelegramFile(ctx, fileId) {
@@ -569,10 +569,18 @@ bot.action(/^translation:speak:(.+)$/, async (ctx) => {
     const targetLanguage = getLanguage(item.targetCode) || languages.find((language) => language.name === item.target);
     const audio = await createSpeech(item.result, targetLanguage?.code || 'en');
     const voice = await convertToVoice(audio);
-    await sendVoiceWithRetry(ctx, voice, `🔊 ${item.target}`);
+    const sent = await sendVoiceWithRetry(ctx, voice, `🔊 ${item.target}`);
+    if (!sent) {
+      await ctx.reply(`🔊 <b>Ovozli o'qish ishlamadi</b>, lekin matn quyida bor:
+
+${escapeHtml(item.result)}`, { parse_mode: 'HTML' });
+    }
+    return;
   } catch (error) {
     console.error('Ovoz xatosi:', error.message);
-    await ctx.reply(`⚠️ Ovozli o'qish vaqtincha ishlamadi. Sabab: ${escapeHtml(error.message)}`, { parse_mode: 'HTML' });
+    await ctx.reply(`🔊 <b>Ovozli o'qish ishlamadi</b>, lekin matn quyida bor:
+
+${escapeHtml(item.result)}`, { parse_mode: 'HTML' });
   }
 });
 
